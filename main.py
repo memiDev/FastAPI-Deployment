@@ -57,6 +57,35 @@ app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(posts.router, prefix="/api/posts", tags=["posts"])
 
 
+# Security Headers Middleware
+@app.middleware("http") # it can do something before or after the request is handled or both
+async def add_security_headers(request: Request, call_next):
+    """ Add headers to the response before it is sent to the client """
+    # call_next is a function that passes the request along to whatever route is supposed to handle it and gives
+    # back the response
+    response = await call_next(request)
+
+    # Protects against click-jacking
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+
+    # Tells the browser to thrust the content type header
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    # when resetting the password via the route "/reset-password", Referrer-Policy is added to the header and that
+    # should not change, so this check avoids overriding that.
+    if "Referrer-Policy" not in response.headers:
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    if request.url.hostname not in ("localhost", "127.0.0.1"):
+        # tells browsers to always use https when visiting our site except "localhost", "127.0.0.1" so that it is still
+        # possible to visit the website in development mode
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=63072000; includeSubDomains"
+        )
+
+    return response
+
+
 @app.get("/health")
 async def health_check(db: Annotated[AsyncSession, Depends(get_db)]):
     try:
